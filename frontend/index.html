@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WardZero - Smart Home Healthcare Monitoring</title>
+  
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Plus Jakarta Sans & Inter & JetBrains Mono Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <!-- Chart.js via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'Inter', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace']
+          },
+          colors: {
+            brand: {
+              50: '#ecfdf5',
+              100: '#d1fae5',
+              500: '#10b981',
+              600: '#059669',
+              700: '#047857',
+              900: '#064e3b'
+            },
+            teal: {
+              50: '#f0fdfa',
+              100: '#ccfbf1',
+              500: '#14b8a6',
+              600: '#0d9488',
+              700: '#0f766e',
+              900: '#134e4a'
+            }
+          },
+          boxShadow: {
+            'glow-teal': '0 0 25px -4px rgba(13, 148, 136, 0.20)',
+            'glow-rose': '0 0 25px -4px rgba(225, 29, 72, 0.20)',
+            'glass': '0 8px 30px rgba(15, 23, 42, 0.05)'
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background: radial-gradient(circle at 50% 0%, #f1f5f9 0%, #f8fafc 100%);
+    }
+    .glass-card {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(226, 232, 240, 0.85);
+    }
+    .sparkline-canvas {
+      width: 100% !important;
+      height: 44px !important;
+    }
+    @keyframes pulse-soft {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.75; transform: scale(1.1); }
+    }
+    .live-dot {
+      animation: pulse-soft 2s infinite ease-in-out;
+    }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 8px; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  </style>
+</head>
+<body class="text-slate-800 antialiased min-h-screen flex flex-col justify-between selection:bg-teal-500 selection:text-white">
+
+  <div>
+    <!-- Top Modern Navigation Bar -->
+    <header class="glass-card sticky top-0 z-40 border-b border-slate-200/80 shadow-xs">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        
+        <!-- Brand Identity -->
+        <div class="flex items-center space-x-3.5">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-teal-600 via-teal-500 to-emerald-400 flex items-center justify-center text-white font-extrabold text-lg shadow-md shadow-teal-500/20 ring-2 ring-white">
+            W0
+          </div>
+          <div>
+            <div class="flex items-center space-x-2">
+              <h1 class="text-base font-extrabold tracking-tight text-slate-900 leading-none">WardZero</h1>
+              <span class="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200/60">
+                Decision Support
+              </span>
+            </div>
+            <p class="text-xs text-slate-400 font-medium mt-0.5">Smart Home Healthcare Telemetry System</p>
+          </div>
+        </div>
+
+        <!-- Patient Selector & Live Telemetry Pill -->
+        <div class="flex items-center space-x-3 sm:space-x-4">
+          <!-- Patient Selector -->
+          <div class="flex items-center bg-white border border-slate-200/90 rounded-xl px-3 py-1.5 shadow-xs hover:border-teal-400 transition">
+            <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-2">Patient</span>
+            <select id="patientSelect" class="bg-transparent text-xs sm:text-sm font-semibold text-slate-800 focus:outline-none cursor-pointer pr-1" onchange="onPatientChange()">
+              <option value="P001">Mr. Sharma (72, COPD)</option>
+              <option value="P002">Mrs. Anita Rao (68, Post-op)</option>
+            </select>
+          </div>
+
+          <!-- Connection Status Pill -->
+          <div id="connectionStatus" class="flex items-center space-x-2 text-xs font-semibold px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200/80 shadow-xs transition-all">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 live-dot"></span>
+            <span id="connectionText" class="hidden sm:inline">Telemetry Live</span>
+            <span class="text-[10px] text-emerald-600/70 font-mono hidden md:inline">2s poll</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Degraded Mode / Network Incident Banner -->
+    <div id="degradedBanner" class="hidden bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white px-4 py-2.5 text-xs sm:text-sm font-medium shadow-md transition-all">
+      <div class="max-w-7xl mx-auto flex items-center justify-between">
+        <div class="flex items-center space-x-2.5">
+          <div class="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+          </div>
+          <span id="bannerText" class="font-medium">System Telemetry Alert: Operating under simulated failure condition.</span>
+        </div>
+        <button onclick="dismissBanner()" class="text-xs bg-black/20 hover:bg-black/30 px-2.5 py-1 rounded-lg transition font-medium">Dismiss</button>
+      </div>
+    </div>
+
+    <!-- Main Content Container -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+      <!-- Patient Header Info Card -->
+      <section class="glass-card rounded-2xl p-4 sm:p-5 flex flex-wrap items-center justify-between gap-4 shadow-glass">
+        <div class="flex items-center space-x-3.5">
+          <div class="w-12 h-12 rounded-2xl bg-teal-50 border border-teal-100 flex items-center justify-center text-teal-700 font-extrabold text-lg">
+            <span id="patientInitials">MS</span>
+          </div>
+          <div>
+            <div class="flex items-center space-x-2">
+              <h2 id="patientHeaderName" class="text-base sm:text-lg font-bold text-slate-900 leading-tight">Mr. Sharma</h2>
+              <span id="patientConditionBadge" class="text-xs font-semibold px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200">
+                COPD • Age 72
+              </span>
+            </div>
+            <p id="patientBaselinesText" class="text-xs text-slate-500 font-medium mt-0.5">
+              Target SpO2: 88-92% (COPD profile) • Baseline HR: 76 bpm • BP: 126/80 mmHg
+            </p>
+          </div>
+        </div>
+
+        <div class="flex items-center space-x-2 text-xs text-slate-500">
+          <span class="inline-flex items-center px-2.5 py-1 rounded-lg bg-slate-100 font-medium">
+            Device: <span id="deviceIdDisplay" class="font-mono text-slate-700 ml-1 font-semibold">DEV-P001-A</span>
+          </span>
+          <span class="inline-flex items-center px-2.5 py-1 rounded-lg bg-slate-100 font-medium">
+            Packets: <span id="packetSeqDisplay" class="font-mono text-slate-700 ml-1 font-semibold">#--</span>
+          </span>
+        </div>
+      </section>
+
+      <!-- 1. Four Vital Metric Cards in a Row -->
+      <section class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        
+        <!-- SpO2 Card -->
+        <div class="glass-card rounded-2xl p-4 sm:p-5 shadow-glass hover:shadow-glow-teal hover:border-teal-300 transition duration-300 flex flex-col justify-between">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-1.5">
+              <span class="w-2 h-2 rounded-full bg-teal-500"></span>
+              <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">SpO2 Oxygen</span>
+            </div>
+            <span class="text-[11px] font-semibold text-slate-400 bg-slate-100/80 px-2 py-0.5 rounded-md" id="spo2Target">Base: 95%</span>
+          </div>
+          <div class="flex items-baseline space-x-1 my-3">
+            <span id="spo2Val" class="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900">--</span>
+            <span class="text-sm font-semibold text-slate-400">%</span>
+          </div>
+          <div>
+            <canvas id="spo2Sparkline" class="sparkline-canvas"></canvas>
+          </div>
+        </div>
+
+        <!-- Heart Rate Card -->
+        <div class="glass-card rounded-2xl p-4 sm:p-5 shadow-glass hover:shadow-glow-rose hover:border-rose-300 transition duration-300 flex flex-col justify-between">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-1.5">
+              <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+              <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Heart Rate</span>
+            </div>
+            <span class="text-[11px] font-semibold text-slate-400 bg-slate-100/80 px-2 py-0.5 rounded-md" id="hrTarget">Base: 76 bpm</span>
+          </div>
+          <div class="flex items-baseline space-x-1 my-3">
+            <span id="hrVal" class="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900">--</span>
+            <span class="text-sm font-semibold text-slate-400">bpm</span>
+          </div>
+          <div>
+            <canvas id="hrSparkline" class="sparkline-canvas"></canvas>
+          </div>
+        </div>
+
+        <!-- Blood Pressure Card -->
+        <div class="glass-card rounded-2xl p-4 sm:p-5 shadow-glass hover:border-indigo-300 transition duration-300 flex flex-col justify-between">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-1.5">
+              <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
+              <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Blood Pressure</span>
+            </div>
+            <span class="text-[11px] font-semibold text-slate-400 bg-slate-100/80 px-2 py-0.5 rounded-md">Sys / Dia</span>
+          </div>
+          <div class="flex items-baseline space-x-1 my-3">
+            <span id="bpVal" class="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900">--/--</span>
+            <span class="text-sm font-semibold text-slate-400">mmHg</span>
+          </div>
+          <div>
+            <canvas id="bpSparkline" class="sparkline-canvas"></canvas>
+          </div>
+        </div>
+
+        <!-- Temperature Card -->
+        <div class="glass-card rounded-2xl p-4 sm:p-5 shadow-glass hover:border-amber-300 transition duration-300 flex flex-col justify-between">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-1.5">
+              <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+              <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Temperature</span>
+            </div>
+            <span class="text-[11px] font-semibold text-slate-400 bg-slate-100/80 px-2 py-0.5 rounded-md">Axillary</span>
+          </div>
+          <div class="flex items-baseline space-x-1 my-3">
+            <span id="tempVal" class="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900">--</span>
+            <span class="text-sm font-semibold text-slate-400">°C</span>
+          </div>
+          <div>
+            <canvas id="tempSparkline" class="sparkline-canvas"></canvas>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- 2. Main Area: Chart + Risk Card (Left 2 cols) & Caregiver Action Console (Right col) -->
+      <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        <!-- Left / Center: Vitals Chart & Risk Assessment -->
+        <div class="lg:col-span-2 space-y-6">
+          
+          <!-- Telemetry Live Stream Chart -->
+          <div class="glass-card rounded-2xl p-5 sm:p-6 shadow-glass">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h3 class="text-sm font-extrabold text-slate-900 uppercase tracking-wider">Continuous Physiological Trend</h3>
+                <p class="text-xs text-slate-400 font-medium">Dual-axis correlation of SpO2 saturation & heart rate trajectory</p>
+              </div>
+              <div class="flex items-center space-x-3 text-xs font-semibold">
+                <span class="flex items-center space-x-1.5 text-teal-700">
+                  <span class="w-2.5 h-1 rounded bg-teal-600"></span>
+                  <span>SpO2</span>
+                </span>
+                <span class="flex items-center space-x-1.5 text-rose-600">
+                  <span class="w-2.5 h-1 rounded bg-rose-500"></span>
+                  <span>Heart Rate</span>
+                </span>
+              </div>
+            </div>
+            <div class="h-64 sm:h-72">
+              <canvas id="mainVitalsChart"></canvas>
+            </div>
+          </div>
+
+          <!-- Hybrid Risk Assessment Decision-Support Card -->
+          <div class="glass-card rounded-2xl p-5 sm:p-6 shadow-glass border-l-4 border-l-teal-500 transition-all duration-300" id="riskCardContainer">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div>
+                <div class="flex items-center space-x-2">
+                  <h3 class="text-sm font-extrabold text-slate-900 uppercase tracking-wider">Predictive Risk Assessment</h3>
+                  <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                    Hybrid Architecture
+                  </span>
+                </div>
+                <p class="text-xs text-slate-500 mt-0.5">Clinical safety floor (NEWS2-inspired) + Scikit-Learn Logistic Regression</p>
+              </div>
+              <span id="riskBadge" class="px-3.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-xs">
+                LOW RISK
+              </span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-5">
+              
+              <!-- 24-48h Deterioration Gauge -->
+              <div class="flex flex-col items-center justify-center p-4 bg-slate-50/80 rounded-xl border border-slate-200/80 text-center">
+                <span class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">24-48h Deterioration Risk</span>
+                <span id="probPercent" class="text-4xl font-black text-teal-600 tracking-tight">8%</span>
+                <div class="w-full bg-slate-200 rounded-full h-2.5 mt-2.5 overflow-hidden p-0.5">
+                  <div id="probBar" class="bg-gradient-to-r from-teal-500 to-emerald-400 h-1.5 rounded-full transition-all duration-700" style="width: 8%"></div>
+                </div>
+                <span class="text-[10px] font-medium text-slate-400 mt-2">Rolling statistical features (slope & std)</span>
+              </div>
+
+              <!-- Explainable "Why?" Drivers -->
+              <div class="md:col-span-2 flex flex-col justify-between">
+                <div>
+                  <div class="flex items-center justify-between mb-2">
+                    <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider">Top Contributing Factors (Explainability)</h4>
+                    <span class="text-[10px] text-slate-400 font-mono">β × feature score</span>
+                  </div>
+                  <ul id="reasonsList" class="space-y-2 text-xs text-slate-700">
+                    <li class="flex items-start space-x-2 bg-slate-50/70 p-2 rounded-lg border border-slate-100">
+                      <span class="text-teal-600 font-bold mt-0.5">✓</span>
+                      <span>Vitals within normal expected physiological baselines.</span>
+                    </li>
+                  </ul>
+                </div>
+                <div class="mt-3 text-[11px] text-slate-400 italic flex items-center space-x-1.5">
+                  <svg class="w-3.5 h-3.5 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                  <span>Decision-support only. Not a medical diagnosis. Uses synthetic data.</span>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Right: Caregiver Alerts & Escalation Console -->
+        <div class="space-y-6">
+          <div class="glass-card rounded-2xl p-5 sm:p-6 shadow-glass flex flex-col justify-between h-full">
+            <div>
+              <div class="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+                <div>
+                  <h3 class="text-sm font-extrabold text-slate-900 uppercase tracking-wider">Caregiver Escalation</h3>
+                  <p class="text-xs text-slate-400 font-medium">Auto-escalation SLA: 30s timeout</p>
+                </div>
+                <span id="activeAlertCount" class="text-xs bg-slate-100 font-bold px-2.5 py-1 rounded-full text-slate-600 border border-slate-200">
+                  0 Active
+                </span>
+              </div>
+
+              <!-- Active Alert Display -->
+              <div id="alertContainer" class="space-y-3">
+                <div class="p-5 rounded-xl bg-slate-50/80 border border-slate-200/80 text-center text-slate-500 text-xs">
+                  <div class="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 mx-auto mb-2 flex items-center justify-center font-bold">✓</div>
+                  No active escalation alerts. Patient is stable.
+                </div>
+              </div>
+            </div>
+
+            <!-- Action Response Console -->
+            <div class="mt-6 pt-4 border-t border-slate-100 space-y-3.5">
+              <span class="text-xs font-bold text-slate-700 uppercase tracking-wider block">Caregiver Action</span>
+              <div class="grid grid-cols-3 gap-2">
+                <button onclick="respondAlert('Acknowledged')" class="bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 text-xs font-bold py-2.5 px-2 rounded-xl transition text-center shadow-xs">
+                  Acknowledge
+                </button>
+                <button onclick="respondAlert('OnMyWay')" class="bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold py-2.5 px-2 rounded-xl transition text-center shadow-md shadow-teal-600/20">
+                  On My Way
+                </button>
+                <button onclick="respondAlert('Resolved')" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 px-2 rounded-xl transition text-center shadow-md shadow-emerald-600/20">
+                  Resolved
+                </button>
+              </div>
+
+              <!-- Add Caregiver Note Form -->
+              <div class="pt-2">
+                <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Log Caregiver Observation</label>
+                <div class="flex space-x-1.5">
+                  <input type="text" id="caregiverNoteInput" placeholder="e.g., feels breathless, dizzy, weak..." class="text-xs flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 shadow-xs">
+                  <button onclick="submitNote()" class="text-xs bg-slate-900 hover:bg-black text-white px-3.5 py-2 rounded-xl font-bold transition shadow-xs">Post</button>
+                </div>
+                <span class="text-[10px] text-slate-400 mt-1 block">Keywords automatically elevate risk assessment</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </section>
+
+      <!-- 3. Bottom Row: Caregiver Notes & Notification Outbox -->
+      <section class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        
+        <!-- Caregiver Notes Timeline -->
+        <div class="glass-card rounded-2xl p-5 sm:p-6 shadow-glass">
+          <div class="flex items-center justify-between mb-3.5">
+            <h3 class="text-sm font-extrabold text-slate-900 uppercase tracking-wider">Observation History</h3>
+            <span class="text-xs text-slate-400 font-medium">Clinical notes stream</span>
+          </div>
+          <div id="notesTimeline" class="space-y-2 max-h-48 overflow-y-auto pr-1 text-xs text-slate-600">
+            <div class="text-slate-400 italic">No notes logged yet.</div>
+          </div>
+        </div>
+
+        <!-- Simulated Notification Outbox -->
+        <div class="glass-card rounded-2xl p-5 sm:p-6 shadow-glass">
+          <div class="flex items-center justify-between mb-3.5">
+            <div class="flex items-center space-x-2">
+              <h3 class="text-sm font-extrabold text-slate-900 uppercase tracking-wider">Notification Outbox</h3>
+              <span class="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-200/60">
+                Mock Dispatch
+              </span>
+            </div>
+            <span class="text-xs text-slate-400 font-mono">SMS / WhatsApp</span>
+          </div>
+          <div id="outboxLog" class="space-y-2 max-h-48 overflow-y-auto pr-1 text-xs font-mono">
+            <div class="text-slate-400 font-sans italic">Outbox queue empty.</div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- 4. Collapsible Failure Demonstration Panel -->
+      <section class="glass-card rounded-2xl border border-slate-200/90 shadow-glass overflow-hidden">
+        <button onclick="toggleFailurePanel()" class="w-full px-5 py-4 bg-slate-50/70 hover:bg-slate-100/80 flex items-center justify-between text-left transition">
+          <div class="flex items-center space-x-2.5">
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-sm shadow-amber-500/50"></span>
+            <span class="text-sm font-bold text-slate-800 uppercase tracking-wider">Interactive Failure Demonstration Panel</span>
+            <span class="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-md hidden sm:inline">Edge-case Sandbox</span>
+          </div>
+          <span id="failurePanelToggleIcon" class="text-xs font-bold text-slate-500">▼ Expand</span>
+        </button>
+
+        <div id="failurePanelContent" class="hidden p-5 sm:p-6 border-t border-slate-100 bg-white/60">
+          <p class="text-xs text-slate-500 mb-5 max-w-3xl leading-relaxed">
+            Test how WardZero safeguards against home healthcare breakdown scenarios: disconnected internet with store-and-forward local buffering, corrupt pulse-oximeter packets, and cascading unresponsive caregiver alerts.
+          </p>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            
+            <!-- Button 1: Cut / Restore Network -->
+            <div class="p-4 rounded-xl border border-slate-200/80 bg-white flex flex-col justify-between shadow-xs">
+              <div>
+                <h4 class="text-xs font-bold text-slate-900 uppercase tracking-wider">1. Network Connectivity</h4>
+                <p class="text-[11px] text-slate-500 mt-1 leading-normal">
+                  Simulator buffers packets into a local JSON queue during outage, then replays them in chronological sequence upon reconnect.
+                </p>
+              </div>
+              <button id="netToggleBtn" onclick="toggleNetwork()" class="mt-4 w-full py-2 px-3 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white transition shadow-sm">
+                Cut Network
+              </button>
+            </div>
+
+            <!-- Button 2: Send Corrupt Data -->
+            <div class="p-4 rounded-xl border border-slate-200/80 bg-white flex flex-col justify-between shadow-xs">
+              <div>
+                <h4 class="text-xs font-bold text-slate-900 uppercase tracking-wider">2. Sensor Data Quality</h4>
+                <p class="text-[11px] text-slate-500 mt-1 leading-normal">
+                  Injects impossible or flatline readings. Flagged as "sensor issue" rather than a false medical emergency.
+                </p>
+              </div>
+              <button id="corruptToggleBtn" onclick="toggleCorrupt()" class="mt-4 w-full py-2 px-3 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white transition shadow-sm">
+                Simulate Corrupt Data
+              </button>
+            </div>
+
+            <!-- Button 3: Caregiver Unresponsive -->
+            <div class="p-4 rounded-xl border border-slate-200/80 bg-white flex flex-col justify-between shadow-xs">
+              <div>
+                <h4 class="text-xs font-bold text-slate-900 uppercase tracking-wider">3. Caregiver SLA Escalation</h4>
+                <p class="text-[11px] text-slate-500 mt-1 leading-normal">
+                  Simulates missed response. Cascades from Caregiver A &rarr; Caregiver B &rarr; Family &rarr; Medical Professional.
+                </p>
+              </div>
+              <button id="escalateToggleBtn" onclick="toggleEscalation()" class="mt-4 w-full py-2 px-3 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white transition shadow-sm">
+                Caregiver Unresponsive
+              </button>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Modern Clean Footer -->
+  <footer class="glass-card border-t border-slate-200/80 py-4 mt-8">
+    <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-400 font-medium gap-2">
+      <div class="flex items-center space-x-2">
+        <span class="w-1.5 h-1.5 rounded-full bg-teal-500"></span>
+        <span>WardZero Decision-Support Prototype • Synthetic Data Only</span>
+      </div>
+      <div>
+        <span>Not a certified medical diagnosis. Always consult certified clinical staff.</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Application Logic (Vanilla JS) -->
+  <script>
+    let currentPatientId = "P001";
+    let vitalsChart = null;
+    let sparklines = {};
+    let latestActiveAlertId = null;
+    let systemState = {};
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initSparklines();
+      initMainChart();
+      fetchData();
+      setInterval(fetchData, 2000); // 2-second live polling loop
+    });
+
+    function onPatientChange() {
+      currentPatientId = document.getElementById("patientSelect").value;
+      const initials = document.getElementById("patientInitials");
+      const name = document.getElementById("patientHeaderName");
+      const condBadge = document.getElementById("patientConditionBadge");
+      const baseText = document.getElementById("patientBaselinesText");
+      const devDisplay = document.getElementById("deviceIdDisplay");
+
+      if (currentPatientId === "P001") {
+        initials.textContent = "MS";
+        name.textContent = "Mr. Sharma";
+        condBadge.textContent = "COPD • Age 72";
+        baseText.textContent = "Target SpO2: 88-92% (COPD profile) • Baseline HR: 76 bpm • BP: 126/80 mmHg";
+        devDisplay.textContent = "DEV-P001-A";
+        document.getElementById("spo2Target").textContent = "Base: 95%";
+        document.getElementById("hrTarget").textContent = "Base: 76 bpm";
+      } else {
+        initials.textContent = "AR";
+        name.textContent = "Mrs. Anita Rao";
+        condBadge.textContent = "Post-op Recovery • Age 68";
+        baseText.textContent = "Target SpO2: 95-99% • Baseline HR: 72 bpm • BP: 118/76 mmHg";
+        devDisplay.textContent = "DEV-P002-B";
+        document.getElementById("spo2Target").textContent = "Base: 98%";
+        document.getElementById("hrTarget").textContent = "Base: 72 bpm";
+      }
+      fetchData();
+    }
+
+    function initSparklines() {
+      const options = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+        scales: { x: { display: false }, y: { display: false } },
+        elements: { point: { radius: 0 }, line: { tension: 0.35, borderWidth: 2 } }
+      };
+
+      sparklines.spo2 = new Chart(document.getElementById('spo2Sparkline'), {
+        type: 'line',
+        data: { labels: [1,2,3,4,5], datasets: [{ data: [95,95,95,95,95], borderColor: '#0d9488', fill: false }] },
+        options
+      });
+      sparklines.hr = new Chart(document.getElementById('hrSparkline'), {
+        type: 'line',
+        data: { labels: [1,2,3,4,5], datasets: [{ data: [76,76,76,76,76], borderColor: '#e11d48', fill: false }] },
+        options
+      });
+      sparklines.bp = new Chart(document.getElementById('bpSparkline'), {
+        type: 'line',
+        data: { labels: [1,2,3,4,5], datasets: [{ data: [126,126,126,126,126], borderColor: '#6366f1', fill: false }] },
+        options
+      });
+      sparklines.temp = new Chart(document.getElementById('tempSparkline'), {
+        type: 'line',
+        data: { labels: [1,2,3,4,5], datasets: [{ data: [36.8,36.8,36.8,36.8,36.8], borderColor: '#d97706', fill: false }] },
+        options
+      });
+    }
+
+    function initMainChart() {
+      const ctx = document.getElementById('mainVitalsChart').getContext('2d');
+      vitalsChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: 'SpO2 (%)',
+              data: [],
+              borderColor: '#0d9488',
+              backgroundColor: 'rgba(13, 148, 136, 0.08)',
+              borderWidth: 2.5,
+              tension: 0.35,
+              fill: true,
+              yAxisID: 'y'
+            },
+            {
+              label: 'Heart Rate (bpm)',
+              data: [],
+              borderColor: '#f43f5e',
+              backgroundColor: 'transparent',
+              borderWidth: 2.5,
+              tension: 0.35,
+              borderDash: [5, 5],
+              yAxisID: 'y1'
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: 'rgba(15, 23, 42, 0.9)',
+              padding: 10,
+              titleFont: { size: 12, family: 'Plus Jakarta Sans' },
+              bodyFont: { size: 12, family: 'JetBrains Mono' },
+              cornerRadius: 8
+            }
+          },
+          scales: {
+            x: {
+              grid: { color: 'rgba(226, 232, 240, 0.5)' },
+              ticks: { font: { size: 10, family: 'JetBrains Mono' }, color: '#94a3b8' }
+            },
+            y: {
+              type: 'linear',
+              display: true,
+              position: 'left',
+              min: 75,
+              max: 100,
+              grid: { color: 'rgba(226, 232, 240, 0.5)' },
+              ticks: { font: { size: 10, family: 'JetBrains Mono' }, color: '#0d9488' },
+              title: { display: true, text: 'SpO2 (%)', color: '#0d9488', font: { weight: 'bold' } }
+            },
+            y1: {
+              type: 'linear',
+              display: true,
+              position: 'right',
+              min: 50,
+              max: 130,
+              grid: { drawOnChartArea: false },
+              ticks: { font: { size: 10, family: 'JetBrains Mono' }, color: '#f43f5e' },
+              title: { display: true, text: 'Heart Rate (bpm)', color: '#f43f5e', font: { weight: 'bold' } }
+            }
+          }
+        }
+      });
+    }
+
+    async function fetchData() {
+      try {
+        const [patientsRes, vitalsRes, riskRes, alertsRes, notesRes, outboxRes, stateRes] = await Promise.all([
+          fetch('/patients'),
+          fetch(`/vitals/${currentPatientId}`),
+          fetch(`/risk/${currentPatientId}`),
+          fetch(`/alerts?patient_id=${currentPatientId}`),
+          fetch(`/notes/${currentPatientId}`),
+          fetch('/notifications'),
+          fetch('/state')
+        ]);
+
+        if (patientsRes.ok) updatePatients(await patientsRes.json());
+        if (vitalsRes.ok) updateVitals(await vitalsRes.json());
+        if (riskRes.ok) updateRisk(await riskRes.json());
+        if (alertsRes.ok) updateAlerts(await alertsRes.json());
+        if (notesRes.ok) updateNotes(await notesRes.json());
+        if (outboxRes.ok) updateOutbox(await outboxRes.json());
+        if (stateRes.ok) updateState(await stateRes.json());
+
+      } catch (err) {
+        console.warn("Polling dropped (network cut or server offline):", err);
+        showBanner("Connection to telemetry server dropped. Readings buffering locally in store-and-forward queue.");
+      }
+    }
+
+    function updatePatients(patients) {
+      const current = patients.find(p => p.id === currentPatientId);
+      const connDot = document.getElementById("connectionStatus");
+      const connText = document.getElementById("connectionText");
+
+      if (current && current.is_online) {
+        connDot.className = "flex items-center space-x-2 text-xs font-semibold px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200/80 shadow-xs";
+        connText.textContent = "Telemetry Live";
+      } else {
+        connDot.className = "flex items-center space-x-2 text-xs font-semibold px-3 py-1.5 rounded-xl bg-rose-50 text-rose-700 border border-rose-200/80 shadow-xs";
+        connText.textContent = `Device Offline (${current ? current.last_seen_seconds_ago : '>15'}s)`;
+      }
+    }
+
+    function updateVitals(readings) {
+      if (!readings || readings.length === 0) return;
+
+      const latest = readings[readings.length - 1];
+      
+      // Update Big Number Displays
+      document.getElementById('spo2Val').textContent = latest.spo2;
+      document.getElementById('hrVal').textContent = latest.heart_rate;
+      document.getElementById('bpVal').textContent = `${Math.round(latest.bp_sys)}/${Math.round(latest.bp_dia)}`;
+      document.getElementById('tempVal').textContent = latest.temperature;
+      document.getElementById('packetSeqDisplay').textContent = `#${latest.sequence_num}`;
+
+      // Update Sparklines
+      const slice = readings.slice(-10);
+      sparklines.spo2.data.labels = slice.map((_, i) => i);
+      sparklines.spo2.data.datasets[0].data = slice.map(r => r.spo2);
+      sparklines.spo2.update();
+
+      sparklines.hr.data.labels = slice.map((_, i) => i);
+      sparklines.hr.data.datasets[0].data = slice.map(r => r.heart_rate);
+      sparklines.hr.update();
+
+      sparklines.bp.data.labels = slice.map((_, i) => i);
+      sparklines.bp.data.datasets[0].data = slice.map(r => r.bp_sys);
+      sparklines.bp.update();
+
+      sparklines.temp.data.labels = slice.map((_, i) => i);
+      sparklines.temp.data.datasets[0].data = slice.map(r => r.temperature);
+      sparklines.temp.update();
+
+      // Update Main Trend Chart
+      vitalsChart.data.labels = readings.map(r => {
+        const d = new Date(r.recorded_at);
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      });
+      vitalsChart.data.datasets[0].data = readings.map(r => r.spo2);
+      vitalsChart.data.datasets[1].data = readings.map(r => r.heart_rate);
+      vitalsChart.update();
+    }
+
+    function updateRisk(risk) {
+      const badge = document.getElementById("riskBadge");
+      const cardContainer = document.getElementById("riskCardContainer");
+      badge.textContent = `${risk.level} RISK (Score ${risk.score})`;
+
+      // Dynamic color styling for Risk Level
+      badge.className = "px-3.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider shadow-xs ";
+      if (risk.level === "CRITICAL") {
+        badge.className += "bg-rose-100 text-rose-800 border border-rose-300";
+        cardContainer.className = cardContainer.className.replace(/border-l-\w+-500/, "border-l-rose-500");
+      } else if (risk.level === "HIGH") {
+        badge.className += "bg-orange-100 text-orange-800 border border-orange-300";
+        cardContainer.className = cardContainer.className.replace(/border-l-\w+-500/, "border-l-orange-500");
+      } else if (risk.level === "MODERATE") {
+        badge.className += "bg-amber-100 text-amber-800 border border-amber-300";
+        cardContainer.className = cardContainer.className.replace(/border-l-\w+-500/, "border-l-amber-500");
+      } else {
+        badge.className += "bg-emerald-100 text-emerald-800 border border-emerald-300";
+        cardContainer.className = cardContainer.className.replace(/border-l-\w+-500/, "border-l-teal-500");
+      }
+
+      // Probability gauge
+      const probPercent = Math.round(risk.probability_24_48h * 100);
+      document.getElementById("probPercent").textContent = `${probPercent}%`;
+      const probBar = document.getElementById("probBar");
+      probBar.style.width = `${Math.min(probPercent, 100)}%`;
+      if (probPercent > 60) {
+        probBar.className = "h-1.5 rounded-full transition-all duration-700 bg-gradient-to-r from-rose-500 to-rose-600";
+      } else if (probPercent > 30) {
+        probBar.className = "h-1.5 rounded-full transition-all duration-700 bg-gradient-to-r from-amber-500 to-orange-500";
+      } else {
+        probBar.className = "h-1.5 rounded-full transition-all duration-700 bg-gradient-to-r from-teal-500 to-emerald-400";
+      }
+
+      // Top Contributing Factors
+      const reasonsList = document.getElementById("reasonsList");
+      reasonsList.innerHTML = "";
+      risk.reasons.forEach(r => {
+        const li = document.createElement("li");
+        li.className = "flex items-start space-x-2 bg-slate-50/70 p-2 rounded-lg border border-slate-100";
+        li.innerHTML = `<span class="text-teal-600 font-bold mt-0.5">•</span><span>${r}</span>`;
+        reasonsList.appendChild(li);
+      });
+
+      // Degraded Mode Banner Check
+      if (risk.is_degraded) {
+        showBanner("Degraded Mode Active: Machine Learning model offline. Operating strictly under NEWS2 rule-based fallback.");
+      }
+    }
+
+    function updateAlerts(alerts) {
+      const container = document.getElementById("alertContainer");
+      const activeCount = document.getElementById("activeAlertCount");
+
+      const activeAlerts = alerts.filter(a => a.status === 'Active' || a.status === 'OnMyWay');
+      activeCount.textContent = `${activeAlerts.length} Active`;
+
+      if (activeAlerts.length === 0) {
+        latestActiveAlertId = null;
+        container.innerHTML = `
+          <div class="p-5 rounded-xl bg-slate-50/80 border border-slate-200/80 text-center text-slate-500 text-xs">
+            <div class="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 mx-auto mb-2 flex items-center justify-center font-bold">✓</div>
+            No active escalation alerts. Patient is stable.
+          </div>
+        `;
+        return;
+      }
+
+      latestActiveAlertId = activeAlerts[0].id;
+      container.innerHTML = "";
+
+      activeAlerts.forEach(a => {
+        const div = document.createElement("div");
+        div.className = "p-3.5 rounded-xl border text-xs space-y-2 " + 
+          (a.level === 'Critical' ? 'bg-rose-50/90 border-rose-200 shadow-sm' : 'bg-amber-50/90 border-amber-200 shadow-sm');
+        
+        div.innerHTML = `
+          <div class="flex items-center justify-between font-extrabold">
+            <span class="${a.level === 'Critical' ? 'text-rose-700' : 'text-amber-800'}">[${a.level.toUpperCase()}] ESCALATION LEVEL ${a.escalation_step}</span>
+            <span class="text-[10px] bg-white px-2 py-0.5 rounded-md shadow-xs text-slate-700 border border-slate-200/70 font-semibold">${a.status}</span>
+          </div>
+          <div class="font-medium text-slate-700">Assigned To: <span class="font-bold text-slate-900">${a.assigned_to}</span></div>
+          <p class="text-slate-600 leading-normal">${a.message}</p>
+          <div class="text-[10px] text-slate-400 font-mono">Triggered: ${new Date(a.created_at).toLocaleTimeString()}</div>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function updateNotes(notes) {
+      const container = document.getElementById("notesTimeline");
+      if (!notes || notes.length === 0) {
+        container.innerHTML = '<div class="text-slate-400 italic">No notes logged yet.</div>';
+        return;
+      }
+      container.innerHTML = "";
+      notes.forEach(n => {
+        const div = document.createElement("div");
+        div.className = "p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex justify-between items-start";
+        div.innerHTML = `
+          <div>
+            <span class="font-bold text-slate-800">${n.author}:</span>
+            <span class="text-slate-600 ml-1 leading-relaxed">${n.note}</span>
+          </div>
+          <span class="text-[10px] text-slate-400 font-mono flex-shrink-0 ml-2">${new Date(n.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function updateOutbox(items) {
+      const container = document.getElementById("outboxLog");
+      if (!items || items.length === 0) {
+        container.innerHTML = '<div class="text-slate-400 font-sans italic">Outbox queue empty.</div>';
+        return;
+      }
+      container.innerHTML = "";
+      items.forEach(item => {
+        const div = document.createElement("div");
+        div.className = "text-[11px] p-2 rounded-xl bg-slate-900 text-teal-300 border border-slate-800 shadow-xs";
+        div.innerHTML = `
+          <div class="flex justify-between text-slate-400 text-[10px]">
+            <span class="font-semibold text-slate-300">${item.channel} &rarr; ${item.recipient}</span>
+            <span class="font-mono">${new Date(item.created_at).toLocaleTimeString()}</span>
+          </div>
+          <div class="mt-1 leading-normal">${item.message}</div>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function updateState(state) {
+      systemState = state;
+      const netBtn = document.getElementById("netToggleBtn");
+      const corruptBtn = document.getElementById("corruptToggleBtn");
+      const escalateBtn = document.getElementById("escalateToggleBtn");
+
+      if (state.network_cut === "true") {
+        netBtn.textContent = "Restore Network";
+        netBtn.className = "mt-4 w-full py-2 px-3 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-sm";
+        showBanner("Simulated Network Outage active: Ingestion is rejecting telemetry; simulator is buffering data locally.");
+      } else {
+        netBtn.textContent = "Cut Network";
+        netBtn.className = "mt-4 w-full py-2 px-3 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white transition shadow-sm";
+      }
+
+      if (state.force_corrupt === "true") {
+        corruptBtn.textContent = "Stop Corrupt Data";
+        corruptBtn.className = "mt-4 w-full py-2 px-3 rounded-xl text-xs font-bold bg-slate-700 text-white transition shadow-sm";
+        showBanner("Corrupt sensor telemetry active: Flagged as 'sensor issue' (not emergency).");
+      } else {
+        corruptBtn.textContent = "Simulate Corrupt Data";
+        corruptBtn.className = "mt-4 w-full py-2 px-3 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white transition shadow-sm";
+      }
+
+      if (state.simulate_unresponsive === "true") {
+        escalateBtn.textContent = "Normal Response Mode";
+        escalateBtn.className = "mt-4 w-full py-2 px-3 rounded-xl text-xs font-bold bg-slate-700 text-white transition shadow-sm";
+        showBanner("Unresponsive Caregiver Simulation: Alert cascading across escalation chain.");
+      } else {
+        escalateBtn.textContent = "Caregiver Unresponsive";
+        escalateBtn.className = "mt-4 w-full py-2 px-3 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white transition shadow-sm";
+      }
+    }
+
+    async function respondAlert(status) {
+      if (!latestActiveAlertId) {
+        alert("No active alert to respond to.");
+        return;
+      }
+      const noteInput = document.getElementById("caregiverNoteInput");
+      await fetch('/acknowledge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          alert_id: latestActiveAlertId,
+          status: status,
+          caregiver: "Nurse Sarah (Primary)",
+          note: noteInput.value || `Caregiver responded with status: ${status}`
+        })
+      });
+      noteInput.value = "";
+      fetchData();
+    }
+
+    async function submitNote() {
+      const noteInput = document.getElementById("caregiverNoteInput");
+      const text = noteInput.value.trim();
+      if (!text) return;
+
+      await fetch('/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patient_id: currentPatientId,
+          author: "Caregiver Sarah",
+          note: text
+        })
+      });
+      noteInput.value = "";
+      fetchData();
+    }
+
+    // Failure Demonstration Toggles
+    async function toggleNetwork() {
+      const nextVal = (systemState.network_cut === "true") ? "false" : "true";
+      await fetch('/failure-toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'network_cut', value: nextVal })
+      });
+      if (nextVal === "false") dismissBanner();
+      fetchData();
+    }
+
+    async function toggleCorrupt() {
+      const nextVal = (systemState.force_corrupt === "true") ? "false" : "true";
+      await fetch('/failure-toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'force_corrupt', value: nextVal })
+      });
+      if (nextVal === "false") dismissBanner();
+      fetchData();
+    }
+
+    async function toggleEscalation() {
+      const nextVal = (systemState.simulate_unresponsive === "true") ? "false" : "true";
+      await fetch('/failure-toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'simulate_unresponsive', value: nextVal })
+      });
+      if (nextVal === "false") dismissBanner();
+      fetchData();
+    }
+
+    function toggleFailurePanel() {
+      const panel = document.getElementById("failurePanelContent");
+      const icon = document.getElementById("failurePanelToggleIcon");
+      if (panel.classList.contains("hidden")) {
+        panel.classList.remove("hidden");
+        icon.textContent = "▲ Collapse";
+      } else {
+        panel.classList.add("hidden");
+        icon.textContent = "▼ Expand";
+      }
+    }
+
+    function showBanner(msg) {
+      const b = document.getElementById("degradedBanner");
+      document.getElementById("bannerText").textContent = msg;
+      b.classList.remove("hidden");
+    }
+
+    function dismissBanner() {
+      document.getElementById("degradedBanner").classList.add("hidden");
+    }
+  </script>
+</body>
+</html>
